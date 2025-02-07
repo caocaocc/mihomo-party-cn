@@ -1,0 +1,274 @@
+name: Build
+permissions: write-all
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Tag version to release"
+        required: false
+  push:
+    branches:
+      - master
+    tags:
+      - v*
+    paths-ignore:
+      - 'README.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/workflows/issues.yml'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        arch: [x64, arm64]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check out Mihomo Party
+        uses: actions/checkout@v3
+        with:
+          repository: mihomo-party-org/mihomo-party
+          ref: fa3c4121460ebf4ca4412a38b29a7f3f07075c9b
+          path: mihomo-party
+
+      - name: Set Mihomo Party
+        working-directory: mihomo-party
+        shell: bash
+        run: |
+          cmd_sed() {
+            if [ "${{ runner.os }}" = "macOS" ]; then
+              sed -i '' "$@"
+            else
+              sed -i "$@"
+            fi
+          }
+
+          curl -o "src/renderer/src/components/profiles/profile-item.tsx" "https://raw.githubusercontent.com/mihomo-party-org/mihomo-party/48475fb0eb72f9dea492da1792c0945efefc3d85/src/renderer/src/components/profiles/profile-item.tsx"
+          # 删除预览版
+          cmd_sed '76,133d' "src/renderer/src/pages/mihomo.tsx"
+          # 默认端口
+          cmd_sed 's/7891/0/g; s/7892/0/g' "src/main/utils/template.ts"
+          cmd_sed 's/7891/0/g; s/7892/0/g' "src/renderer/src/pages/mihomo.tsx"
+          # 删除自动检查更新菜单
+          cmd_sed '97,105d' "src/renderer/src/components/settings/general-config.tsx"
+          # 缩小节点列表字体
+          cmd_sed 's/text-ellipsis overflow-hidden whitespace-nowrap/text-ellipsis overflow-hidden whitespace-nowrap text-xs/g' "src/renderer/src/components/proxies/proxy-item.tsx"
+          cmd_sed 's/text-sm/text-xs/g' "src/renderer/src/components/proxies/proxy-item.tsx"
+          # 修改延迟显示方式
+          cmd_sed '/success/s/500/1200/g' "src/renderer/src/components/proxies/proxy-item.tsx"
+          cmd_sed 's/delay.toString()/Math.round(delay\/4).toString()+" ms"/' "src/renderer/src/components/proxies/proxy-item.tsx"
+          cmd_sed 's|(${delay}ms)|${Math.floor(delay\/4)} ms|g' "src/main/resolve/tray.ts"
+          cmd_sed 's/(Timeout)/超时/g' "src/main/resolve/tray.ts"
+          cmd_sed 's/{proxy.name}/{proxy.name.padEnd(40)}/g' "src/main/resolve/tray.ts"
+          # 删除出站模式
+          cmd_sed '95,145d' "src/main/resolve/tray.ts"
+          cmd_sed '/<OutboundModeSwitcher.*>/d' "src/renderer/src/App.tsx"
+          # 删除 GeoData
+          cmd_sed '/GeoData/d' "src/renderer/src/pages/resources.tsx"
+          cmd_sed '114,122d' "src/main/utils/template.ts"
+          # 修改延迟测速网址
+          cmd_sed 's|www.gstatic.com/generate_204|detectportal.firefox.com/success.txt|g' "src/main/core/mihomoApi.ts"
+          cmd_sed 's|www.gstatic.com/generate_204|detectportal.firefox.com/success.txt|g' "src/renderer/src/components/settings/mihomo-config.tsx"
+          # 修改 tun 类型
+          cmd_sed "s/'mixed'/'gvisor'/g" "src/main/utils/template.ts"
+          cmd_sed "s/strictRoute = false/strictRoute = true/g" "src/renderer/src/pages/tun.tsx"
+          # 禁用 SubStore
+          cmd_sed '/useSubStore/s/true/false/g' "src/main/utils/template.ts"
+          # 默认显示代理组按照延迟排序
+          # cmd_sed '/proxyDisplayOrder/s/default/delay/g' "src/main/utils/template.ts"
+          # 默认显示代理组详细信息
+          cmd_sed '/proxyDisplayMode/s/simple/full/g' "src/main/utils/template.ts"
+          # 关闭自动检查更新
+          cmd_sed '/autoCheckUpdate/s/true/false/g' "src/main/utils/template.ts"
+          cmd_sed '/baseUrl/s/mihomo-party-org/caocaocc/g' "src/main/resolve/autoUpdater.ts"
+          cmd_sed '/win32-ia32/d' "src/main/resolve/autoUpdater.ts"
+          # 允许局域网连接
+          cmd_sed '/allow-lan/s/false/true/g' "src/main/utils/template.ts"
+          # 自动开启系统代理并使用 PAC
+          cmd_sed '/sysProxy/s/false/true/g' "src/main/utils/template.ts"
+          cmd_sed '/sysProxy/s/manual/auto/g' "src/main/utils/template.ts"
+          # 使用系统 HOSTS
+          cmd_sed '/use-system-hosts/s/false/true/g' "src/main/utils/template.ts"
+          # 删除外部控制器
+          cmd_sed "/external-controller/s/''/'127.0.0.1:9090'/g" "src/main/utils/template.ts"
+          # 使用系统 DNS 和 114 DNS
+          cmd_sed "/default-nameserver.*=/s/\[.*\]/['114.114.114.114']/g" "src/renderer/src/pages/dns.tsx"
+          cmd_sed "/nameserver:/s/\[.*\]/['system', '114.114.114.114']/g" "src/main/utils/template.ts"
+          cmd_sed "/proxy-server-nameserver/s/\[.*\]/['system', '114.114.114.114']/g" "src/main/utils/template.ts"
+          cmd_sed "/direct-nameserver/s/\[.*\]/['system', '114.114.114.114']/g" "src/main/utils/template.ts"
+          cmd_sed 's|223.5.5.5|114.114.114.114|g' "src/main/core/manager.ts"
+          # 取消首次引导页面
+          cmd_sed '/firstDriver\.drive()/d' "src/renderer/src/App.tsx"
+          # 隐藏打开引导页面和不检查更新
+          cmd_sed '33,62d' "src/renderer/src/components/settings/actions.tsx"
+          cmd_sed '25,31d' "src/renderer/src/components/settings/actions.tsx"
+          # 订阅改为配置
+          cmd_sed "s/空白订阅/配置/g" "src/main/config/profile.ts"
+          cmd_sed "s/空白订阅/配置/g" "src/renderer/src/components/sider/profile-card.tsx"
+          cmd_sed "s/订阅配置/切换配置/g" "src/main/resolve/tray.ts"
+          cmd_sed "s/订阅管理/配置管理/g" "src/renderer/src/App.tsx"
+          cmd_sed "s/订阅管理/配置管理/g" "src/renderer/src/components/settings/sider-config.tsx"
+          cmd_sed "s/订阅管理/配置管理/g" "src/renderer/src/components/sider/profile-card.tsx"
+          cmd_sed "s/订阅管理/配置管理/g" "src/renderer/src/pages/profiles.tsx"
+          cmd_sed "s/更新全部订阅/更新全部配置/g" "src/renderer/src/pages/profiles.tsx"
+          cmd_sed "s/订阅导入/配置导入/g" "src/main/index.ts"
+          cmd_sed "s/订阅导入/配置导入/g" "src/renderer/src/App.tsx"
+          cmd_sed "s/订阅文件/配置文件/g" "src/main/sys/misc.ts"
+          cmd_sed "s/编辑订阅/编辑配置/g" "src/renderer/src/components/profiles/edit-file-modal.tsx"
+          cmd_sed "s/更新订阅/更新配置/g" "src/renderer/src/components/profiles/edit-file-modal.tsx"
+          cmd_sed "s/订阅地址/配置链接/g" "src/renderer/src/components/profiles/edit-info-modal.tsx"
+          cmd_sed "s/不同订阅/不同配置/g" "src/renderer/src/components/settings/mihomo-config.tsx"
+          cmd_sed "s/同步订阅/同步配置/g" "src/renderer/src/components/settings/mihomo-config.tsx"
+          cmd_sed "s/新建订阅/新建配置/g" "src/renderer/src/pages/profiles.tsx"
+          # 代理组 >> 策略组
+          cmd_sed "s/代理组/策略组/g" "src/renderer/src/App.tsx"
+          cmd_sed "s/代理组/策略组/g" "src/renderer/src/components/settings/mihomo-config.tsx"
+          cmd_sed "s/代理组/策略组/g" "src/renderer/src/components/settings/sider-config.tsx"
+          cmd_sed "s/代理组/策略组/g" "src/renderer/src/components/sider/proxy-card.tsx"
+          cmd_sed "s/代理组/策略组/g" "src/renderer/src/pages/proxies.tsx"
+          # 日志卡片最大化
+          cmd_sed '/logCardStatus/s/col-span-1/col-span-2/g' "src/renderer/src/components/settings/sider-config.tsx"
+          cmd_sed '/logCardStatus/s/col-span-1/col-span-2/g' "src/renderer/src/components/sider/log-card.tsx"
+          # 代理组卡片最大化
+          cmd_sed '/proxyCardStatus/s/col-span-1/col-span-2/g' "src/renderer/src/components/settings/sider-config.tsx"
+          cmd_sed '/proxyCardStatus/s/col-span-1/col-span-2/g' "src/renderer/src/components/sider/proxy-card.tsx"
+          # 覆写卡片隐藏
+          cmd_sed '/overrideCardStatus/s/col-span-1/hidden/g' "src/renderer/src/components/settings/sider-config.tsx"
+          cmd_sed '/overrideCardStatus/s/col-span-1/hidden/g' "src/renderer/src/components/sider/override-card.tsx"
+          # 删除 Github 仓库链接
+          cmd_sed '18,57d' "src/renderer/src/pages/settings.tsx"
+          # 其它
+          cmd_sed 's/默认 //g' "src/renderer/src/components/settings/mihomo-config.tsx"
+          cmd_sed "s/显示窗口/显示主窗口/g" "src/main/resolve/tray.ts"
+          cmd_sed "s/环境变量/终端代理命令/g" "src/main/resolve/tray.ts"
+          cmd_sed "s/环境变量/终端代理命令/g" "src/renderer/src/components/settings/general-config.tsx"
+          # 新建配置内容默认为空
+          cmd_sed "s/file: '.*'/file: ''/g" "src/renderer/src/pages/profiles.tsx"
+          # 配置链接提示信息
+          cmd_sed 's/value={url}/value={url} placeholder="从 URL 下载配置"/g' "src/renderer/src/pages/profiles.tsx"
+          cmd_sed 's/导入/下载/g' "src/renderer/src/pages/profiles.tsx"
+          cmd_sed 's/>打开</>从文件导入</g' "src/renderer/src/pages/profiles.tsx"
+          cmd_sed 's/>新建</>新建空白配置</g' "src/renderer/src/pages/profiles.tsx"
+          cmd_sed 's/whitespace-nowrap/whitespace-nowrap transform scale-80 inline-block origin-right/g' "src/renderer/src/pages/profiles.tsx"
+          # 显示网速信息
+          cmd_sed "s/showTraffic = false,/showTraffic = true,/g" "src/renderer/src/components/settings/general-config.tsx"
+          cmd_sed "s/showTraffic = false,/showTraffic = true,/g" "src/renderer/src/components/sider/conn-card.tsx"
+          # 折叠其它策略组
+          cmd_sed '335s/\[...prev\]/Array(prev.length).fill(false)/' "src/renderer/src/pages/proxies.tsx"
+          # 策略组界面始终折叠
+          cmd_sed '37,41d; 43d' "src/renderer/src/pages/proxies.tsx"
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install Dependencies and Prepare
+        working-directory: mihomo-party
+        env:
+          npm_config_arch: ${{ matrix.arch }}
+          npm_config_target_arch: ${{ matrix.arch }}
+        run: |
+          pnpm install
+          pnpm add @mihomo-party/sysproxy-${{ matrix.os == 'windows-latest' && 'win32' || matrix.os == 'ubuntu-latest' && 'linux' || 'darwin' }}-${{ matrix.arch }}${{ matrix.os == 'ubuntu-latest' && '-gnu' || matrix.os == 'windows-latest' && '-msvc' || '' }}
+          pnpm prepare --${{ matrix.arch }}
+
+      - name: Build
+        working-directory: mihomo-party
+        env:
+          npm_config_arch: ${{ matrix.arch }}
+          npm_config_target_arch: ${{ matrix.arch }}
+        run: |
+          chmod +x build/pkg-scripts/postinstall
+          pnpm build:${{ matrix.os == 'windows-latest' && 'win' || matrix.os == 'ubuntu-latest' && 'linux' || 'mac' }} --${{ matrix.arch }}
+
+      - name: Add Portable Flag
+        if: matrix.os == 'windows-latest'
+        working-directory: mihomo-party
+        shell: pwsh
+        run: |
+          New-Item -Path "PORTABLE" -ItemType File
+          Get-ChildItem dist/*portable.7z | ForEach-Object {
+            7z a $_.FullName PORTABLE
+          }
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            mihomo-party/dist/mihomo-party*
+            !mihomo-party/dist/mihomo-party*blockmap
+            mihomo-party/latest.yml
+            mihomo-party/changelog.md
+
+  pre-release:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: bin/
+          merge-multiple: true
+
+      - name: Delete Pre-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release delete pre-release --yes; then
+            echo "Failed to delete release, but continuing..."
+          fi
+          git log -1 --pretty=format:"%s%n%b" > changelog.md
+
+      - name: Publish Prerelease
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pre-release
+          body_path: changelog.md
+          files: |
+            bin/dist/*
+          prerelease: true
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.version != '')
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: '0'
+          fetch-tags: 'true'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: bin/
+          merge-multiple: true
+
+      - name: Delete Current
+        uses: 8Mi-Tech/delete-release-assets-action@main
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.event.inputs.version != '' && github.event.inputs.version || github.ref }}
+          deleteOnlyFromDrafts: false
+
+      - name: Publish Release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version != '' && github.event.inputs.version || github.ref }}
+          files: |
+            bin/dist/*
